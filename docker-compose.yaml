@@ -1,0 +1,53 @@
+name: learning-ray
+services:
+  ray-head:
+      build:
+        context: "."
+        dockerfile: "Dockerfile"
+
+      container_name: ray-driver
+      ports:
+        - "${REDISPORT}:${REDISPORT}"
+        - "${DASHBOARDPORT}:${DASHBOARDPORT}"
+        - "${HEADNODEPORT}:${HEADNODEPORT}"
+        - "${JUPYTERPORT}:${JUPYTERPORT}"
+      env_file:
+        - .env
+      command: bash -c "ray start --head --dashboard-port=${DASHBOARDPORT} --port=${HEADNODEPORT} --dashboard-host=0.0.0.0 --block"
+      shm_size: 4.97g
+      deploy:
+        resources:
+          limits:
+            cpus: '4'
+            memory: '8g'
+      volumes:
+        - ./scripts:/home/ray/scripts
+        - ./notebooks:/home/ray/notebooks
+      networks:
+        - ray_net
+
+  ray-worker:
+
+    image: ${RAY_IMAGE}
+    depends_on: 
+      - ray-head
+    env_file:
+      - .env
+    command: bash -c "ray start --address=ray-driver:${HEADNODEPORT} --num-cpus=${NUM_CPU_WORKER} --block" 
+    shm_size: 16g
+    deploy:
+      mode: replicated
+      replicas: ${NUM_WORKERS:-1} 
+      resources:
+        limits:
+          cpus: ${NUM_CPU_WORKER}
+          memory: '4g'
+    networks:
+      - ray_net
+  
+networks:
+  ray_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.63.0.0/16
